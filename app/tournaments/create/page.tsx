@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { Trophy, Calendar, Crosshair, Users, ChevronRight, ChevronLeft, Upload, CheckCircle2 } from 'lucide-react';
+import { Trophy, Calendar, Crosshair, Users, ChevronRight, ChevronLeft, Upload, CheckCircle2, Shield, UserPlus, Search } from 'lucide-react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
@@ -12,7 +12,11 @@ import { REGIONS } from '@/types';
 
 const ConfettiCanvas = dynamic(() => import('@/components/canvas/ConfettiCanvas'), { ssr: false });
 
-const STEPS = ['Basics', 'Format', 'Schedule', 'Prize'];
+const STEPS = [
+  'Basics', 'Game Mode', 'Structure', 'Match Type', 
+  'Draw Type', 'Registration', 'Mods', 'Verify Window', 
+  'Schedule', 'Prize Pool', 'Publish'
+];
 
 export default function CreateTournamentPage() {
   const router = useRouter();
@@ -26,12 +30,16 @@ export default function CreateTournamentPage() {
   const [form, setForm] = useState({
     name: '', banner_url: '', description: '', organizer_contact: '', region: 'Global',
     mode: 'mp', mp_format: '5v5', br_format: 'squad', match_mode: 'hardpoint', match_format: 'bo3',
-    max_entries: 2, // Always 2 for MP
+    tournament_structure: 'head_to_head', bracket_type: 'single_elim',
+    mp_match_type: 'standard', draw_type: 'random', registration_type: 'self',
+    max_teams: 8, verification_window: 60,
     registration_opens: '', registration_closes: '', start_date: '', match_time_limit: 30,
     has_prize: false, prize_1st: '', prize_2nd: '', prize_3rd: '', prize_notes: ''
   });
 
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [mods, setMods] = useState<{id: string, username: string}[]>([]);
+  const [modSearch, setModSearch] = useState('');
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -39,6 +47,17 @@ export default function CreateTournamentPage() {
     if (e.target.files && e.target.files[0]) {
       setBannerFile(e.target.files[0]);
       setForm(p => ({ ...p, banner_url: URL.createObjectURL(e.target.files![0]) }));
+    }
+  };
+
+  const searchMod = async () => {
+    if (!modSearch) return;
+    const { data } = await supabase.from('users').select('id, username').ilike('username', modSearch).maybeSingle();
+    if (data) {
+      if (!mods.find(m => m.id === data.id)) setMods([...mods, data]);
+      setModSearch('');
+    } else {
+      toast.error('User not found');
     }
   };
 
@@ -56,19 +75,22 @@ export default function CreateTournamentPage() {
         finalBannerUrl = data.publicUrl;
       }
 
-      // Calculate max_players and entry_size based on format
       let entry_size = 1;
       let max_players = 2;
+      let max_entries = form.max_teams;
 
       if (form.mode === 'mp') {
         const sizeMap: Record<string, number> = { '1v1': 1, '2v2': 2, '3v3': 3, '4v4': 4, '5v5': 5 };
         entry_size = sizeMap[form.mp_format] || 5;
-        max_players = entry_size * 2; // Always 2 sides
-        form.max_entries = 2; // Enforce 2 sides
+        if (form.tournament_structure === 'head_to_head') {
+          max_entries = 2;
+        }
+        max_players = max_entries * entry_size;
       } else {
         const sizeMap: Record<string, number> = { 'solo': 1, 'duo': 2, 'squad': 4 };
         entry_size = sizeMap[form.br_format] || 1;
-        max_players = Number(form.max_entries) * entry_size;
+        max_players = Number(form.max_teams) * entry_size;
+        max_entries = form.max_teams;
       }
 
       const tourneyData = {
@@ -81,7 +103,14 @@ export default function CreateTournamentPage() {
         br_format: form.mode === 'br' ? form.br_format : null,
         match_mode: form.match_mode,
         match_format: form.match_format,
-        max_entries: Number(form.max_entries),
+        tournament_structure: form.tournament_structure,
+        bracket_type: form.tournament_structure === 'bracket' ? form.bracket_type : null,
+        draw_type: form.tournament_structure === 'bracket' ? form.draw_type : null,
+        mp_match_type: form.mode === 'mp' ? form.mp_match_type : null,
+        registration_type: form.registration_type,
+        max_teams: max_entries,
+        verification_window: Number(form.verification_window),
+        max_entries,
         entry_size,
         max_players,
         registration_opens: new Date(form.registration_opens).toISOString(),
@@ -101,7 +130,18 @@ export default function CreateTournamentPage() {
       const { data, error } = await supabase.from('tournaments').insert(tourneyData).select('id').single();
       if (error) throw error;
       
-      setNewTourneyId(data.id);
+      const tourneyId = data.id;
+
+      if (mods.length > 0) {
+        const modInserts = mods.map(m => ({
+          tournament_id: tourneyId,
+          user_id: m.id,
+          assigned_by: profile.id
+        }));
+        await supabase.from('tournament_mods').insert(modInserts);
+      }
+      
+      setNewTourneyId(tourneyId);
       setDone(true);
       toast.success('Tournament created successfully!');
     } catch (err: any) {
@@ -131,24 +171,33 @@ export default function CreateTournamentPage() {
     );
   }
 
+  const handleNext = () => {
+    // Skip Draw Type if Head to Head
+    if (step === 3 && form.tournament_structure === 'head_to_head') {
+      setStep(5);
+    } else {
+      setStep(s => s + 1);
+    }
+  };
+
+  const handleBack = () => {
+    // Skip Draw Type if Head to Head
+    if (step === 5 && form.tournament_structure === 'head_to_head') {
+      setStep(3);
+    } else {
+      setStep(s => s - 1);
+    }
+  };
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
-      <h1 className="font-rajdhani font-bold text-3xl mb-8 text-primary">Create Tournament</h1>
+    <div className="max-w-4xl mx-auto px-4 py-12">
+      <h1 className="font-rajdhani font-bold text-3xl mb-2 text-primary">Create Tournament</h1>
+      <p className="text-muted mb-8">Step {step + 1} of {STEPS.length}: {STEPS[step]}</p>
       
       {/* Progress */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center gap-1 mb-8 overflow-x-auto pb-4 scrollbar-hide">
         {STEPS.map((label, i) => (
-          <div key={label} className="flex-1 flex flex-col items-center gap-2 relative">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm z-10 transition-colors
-              ${i <= step ? 'bg-accent text-white' : 'bg-secondary text-muted border border-border'}`}>
-              {i + 1}
-            </div>
-            <span className={`text-xs font-semibold uppercase ${i <= step ? 'text-accent' : 'text-muted'}`}>{label}</span>
-            {i < STEPS.length - 1 && (
-              <div className={`absolute top-4 left-[50%] w-full h-[2px] -z-10
-                ${i < step ? 'bg-accent' : 'bg-border'}`} />
-            )}
-          </div>
+          <div key={label} className={`h-2 flex-1 rounded-full min-w-[24px] ${i <= step ? 'bg-accent shadow-accent-glow' : 'bg-[#222]'}`} />
         ))}
       </div>
 
@@ -161,7 +210,6 @@ export default function CreateTournamentPage() {
               <input type="text" className="frag-input text-lg font-rajdhani font-bold" placeholder="e.g. Summer Championship 2026" 
                 value={form.name} onChange={e => set('name', e.target.value)} />
             </div>
-            
             <div>
               <label className="frag-input-label">Banner Image</label>
               <div className="border-2 border-dashed border-border rounded-xl p-8 text-center relative hover:border-accent transition-colors cursor-pointer group">
@@ -177,13 +225,11 @@ export default function CreateTournamentPage() {
                 )}
               </div>
             </div>
-
             <div>
               <label className="frag-input-label">Description / Details</label>
               <textarea className="frag-input min-h-[120px] resize-y" placeholder="Describe the event, rules, format..." 
                 value={form.description} onChange={e => set('description', e.target.value)} />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="frag-input-label">Organizer Contact</label>
@@ -203,99 +249,191 @@ export default function CreateTournamentPage() {
         {/* STEP 1: Format */}
         {step === 1 && (
           <div className="space-y-8">
-            <div>
-              <label className="frag-input-label mb-3 text-lg">Game Mode</label>
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => set('mode', 'mp')} 
-                  className={`p-4 rounded-xl border-2 text-left transition-all flex flex-col gap-2
-                  ${form.mode === 'mp' ? 'border-accent bg-accent/10' : 'border-border bg-secondary hover:border-accent/50'}`}>
-                  <Crosshair size={24} className={form.mode === 'mp' ? 'text-accent' : 'text-muted'} />
-                  <div className="font-rajdhani font-bold text-xl text-primary">MULTIPLAYER</div>
-                  <div className="text-sm text-secondary">Head-to-head team battles on MP maps.</div>
-                </button>
-                <button onClick={() => set('mode', 'br')} 
-                  className={`p-4 rounded-xl border-2 text-left transition-all flex flex-col gap-2
-                  ${form.mode === 'br' ? 'border-accent bg-accent/10' : 'border-border bg-secondary hover:border-accent/50'}`}>
-                  <Users size={24} className={form.mode === 'br' ? 'text-accent' : 'text-muted'} />
-                  <div className="font-rajdhani font-bold text-xl text-primary">BATTLE ROYALE</div>
-                  <div className="text-sm text-secondary">Last squad/player standing.</div>
-                </button>
-              </div>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => set('mode', 'mp')} 
+                className={`p-4 rounded-xl border-2 text-left transition-all flex flex-col gap-2 ${form.mode === 'mp' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <Crosshair size={24} className={form.mode === 'mp' ? 'text-accent' : 'text-muted'} />
+                <div className="font-rajdhani font-bold text-xl text-primary">MULTIPLAYER</div>
+                <div className="text-sm text-secondary">Team vs Team on MP maps.</div>
+              </button>
+              <button onClick={() => set('mode', 'br')} 
+                className={`p-4 rounded-xl border-2 text-left transition-all flex flex-col gap-2 ${form.mode === 'br' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <Users size={24} className={form.mode === 'br' ? 'text-accent' : 'text-muted'} />
+                <div className="font-rajdhani font-bold text-xl text-primary">BATTLE ROYALE</div>
+                <div className="text-sm text-secondary">Last squad standing wins.</div>
+              </button>
             </div>
-
             {form.mode === 'mp' && (
-              <div className="space-y-6 animate-slide-in-right">
-                <div>
-                  <label className="frag-input-label mb-2">Team Format</label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {['1v1', '2v2', '3v3', '4v4', '5v5'].map(f => (
-                      <button key={f} onClick={() => set('mp_format', f)}
-                        className={`p-3 rounded-lg font-rajdhani font-bold text-lg border-2 transition-all
-                        ${form.mp_format === f ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted bg-secondary'}`}>
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="frag-input-label">Match Mode</label>
-                    <select className="frag-input bg-secondary appearance-none" value={form.match_mode} onChange={e => set('match_mode', e.target.value)}>
-                      <option value="hardpoint">Hardpoint</option>
-                      <option value="snd">Search & Destroy</option>
-                      <option value="control">Control</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="frag-input-label">Match Format</label>
-                    <select className="frag-input bg-secondary appearance-none" value={form.match_format} onChange={e => set('match_format', e.target.value)}>
-                      <option value="single">Best of 1</option>
-                      <option value="bo3">Best of 3</option>
-                      <option value="bo5">Best of 5</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="p-4 rounded-xl bg-accent/10 border border-accent/20 flex items-start gap-3">
-                  <Trophy className="text-accent flex-shrink-0" size={20} />
-                  <div className="text-sm text-primary">
-                    <p className="font-bold mb-1">Head-to-Head Lock</p>
-                    <p className="text-secondary">MP Tournaments are strictly 2 opposing sides. Registration closes automatically when both slots are filled.</p>
-                  </div>
+              <div>
+                <label className="frag-input-label mb-2">Team Size</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {['1v1', '2v2', '3v3', '4v4', '5v5'].map(f => (
+                    <button key={f} onClick={() => set('mp_format', f)}
+                      className={`p-3 rounded-lg font-rajdhani font-bold border-2 ${form.mp_format === f ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted bg-secondary'}`}>
+                      {f}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
-
             {form.mode === 'br' && (
-              <div className="space-y-6 animate-slide-in-right">
-                <div>
-                  <label className="frag-input-label mb-2">Squad Format</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['solo', 'duo', 'squad'].map(f => (
-                      <button key={f} onClick={() => set('br_format', f)}
-                        className={`p-3 rounded-lg font-rajdhani font-bold text-lg border-2 transition-all uppercase
-                        ${form.br_format === f ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted bg-secondary'}`}>
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="frag-input-label">Max Entries ({form.br_format === 'solo' ? 'Players' : form.br_format === 'duo' ? 'Duos' : 'Squads'})</label>
-                  <input type="range" min="2" max={form.br_format === 'solo' ? 100 : form.br_format === 'duo' ? 50 : 25} step="1"
-                    className="w-full accent-accent" value={form.max_entries} onChange={e => set('max_entries', e.target.value)} />
-                  <div className="flex justify-between text-xs text-muted mt-2 font-bold">
-                    <span>2</span>
-                    <span className="text-accent text-lg">{form.max_entries}</span>
-                    <span>{form.br_format === 'solo' ? 100 : form.br_format === 'duo' ? 50 : 25}</span>
-                  </div>
+              <div>
+                <label className="frag-input-label mb-2">Squad Format</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['solo', 'duo', 'squad'].map(f => (
+                    <button key={f} onClick={() => set('br_format', f)}
+                      className={`p-3 rounded-lg font-rajdhani font-bold border-2 uppercase ${form.br_format === f ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted bg-secondary'}`}>
+                      {f}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* STEP 2: Schedule */}
+        {/* STEP 2: Structure */}
         {step === 2 && (
+          <div className="space-y-6">
+            <label className="frag-input-label">Tournament Structure</label>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <button onClick={() => set('tournament_structure', 'head_to_head')} 
+                className={`p-4 rounded-xl border-2 text-left transition-all ${form.tournament_structure === 'head_to_head' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <div className="font-bold text-primary mb-1">Head to Head</div>
+                <div className="text-sm text-secondary">Exactly 2 sides. One match decides everything.</div>
+              </button>
+              <button onClick={() => set('tournament_structure', 'bracket')} 
+                className={`p-4 rounded-xl border-2 text-left transition-all ${form.tournament_structure === 'bracket' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <div className="font-bold text-primary mb-1">Bracket Tournament</div>
+                <div className="text-sm text-secondary">Any number of teams. Auto-generates bracket tree.</div>
+              </button>
+            </div>
+
+            {form.tournament_structure === 'bracket' && (
+              <div className="space-y-6 animate-slide-in-right">
+                <div>
+                  <label className="frag-input-label">Maximum Teams</label>
+                  <input type="number" min="2" className="frag-input text-lg" value={form.max_teams} onChange={e => set('max_teams', parseInt(e.target.value) || 2)} />
+                  <p className="text-xs text-muted mt-2">Enter any number. We will round up to the next power of 2 and fill empty slots with BYES automatically.</p>
+                </div>
+                <div>
+                  <label className="frag-input-label">Elimination Type</label>
+                  <select className="frag-input" value={form.bracket_type} onChange={e => set('bracket_type', e.target.value)}>
+                    <option value="single_elim">Single Elimination</option>
+                    <option value="double_elim">Double Elimination</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3: Match Type (MP Only, if BR we skip conceptually, but let's just show standard for BR or hide) */}
+        {step === 3 && (
+          <div className="space-y-6">
+            {form.mode === 'mp' ? (
+              <>
+                <label className="frag-input-label">Match Type</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <button onClick={() => set('mp_match_type', 'standard')} className={`p-4 rounded-xl border-2 text-left ${form.mp_match_type === 'standard' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                    <div className="font-bold text-primary">Standard Team Match</div>
+                    <div className="text-xs text-muted mt-1">Full team vs full team.</div>
+                  </button>
+                  <button onClick={() => set('mp_match_type', 'pure_1v1')} className={`p-4 rounded-xl border-2 text-left ${form.mp_match_type === 'pure_1v1' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                    <div className="font-bold text-primary">Pure 1v1 Bracket</div>
+                    <div className="text-xs text-muted mt-1">Solo players register. 1v1 matches only.</div>
+                  </button>
+                  <button onClick={() => set('mp_match_type', 'representative')} className={`p-4 rounded-xl border-2 text-left ${form.mp_match_type === 'representative' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                    <div className="font-bold text-primary">Team Representative</div>
+                    <div className="text-xs text-muted mt-1">Teams nominate 1 player for a 1v1 battle per match.</div>
+                  </button>
+                  <button onClick={() => set('mp_match_type', 'battle')} className={`p-4 rounded-xl border-2 text-left ${form.mp_match_type === 'battle' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                    <div className="font-bold text-primary">Team Battle (Best of X)</div>
+                    <div className="text-xs text-muted mt-1">Multiple individual 1v1s. First team to reach majority wins.</div>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="p-8 text-center text-muted">Match Type is standardized for Battle Royale. Click Next.</div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 4: Draw Type */}
+        {step === 4 && (
+          <div className="space-y-6">
+            <label className="frag-input-label">Draw Type</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => set('draw_type', 'random')} className={`p-4 rounded-xl border-2 text-left ${form.draw_type === 'random' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <div className="font-bold text-primary mb-1">Pure Random</div>
+                <div className="text-sm text-secondary">Every team has an equal chance of any slot.</div>
+              </button>
+              <button onClick={() => set('draw_type', 'seeded')} className={`p-4 rounded-xl border-2 text-left ${form.draw_type === 'seeded' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <div className="font-bold text-primary mb-1">Seeded Draw</div>
+                <div className="text-sm text-secondary">Teams ranked by platform stats. Top seeds separated.</div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 5: Registration Type */}
+        {step === 5 && (
+          <div className="space-y-6">
+            <label className="frag-input-label">Registration Type</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => set('registration_type', 'self')} className={`p-4 rounded-xl border-2 text-left ${form.registration_type === 'self' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <div className="font-bold text-primary mb-1">Team Self Registration</div>
+                <div className="text-sm text-secondary">Captains register and add their teammates.</div>
+              </button>
+              <button onClick={() => set('registration_type', 'auto')} className={`p-4 rounded-xl border-2 text-left ${form.registration_type === 'auto' ? 'border-accent bg-accent/10' : 'border-border bg-secondary'}`}>
+                <div className="font-bold text-primary mb-1">Individual Auto Team Builder</div>
+                <div className="text-sm text-secondary">Players register solo. Platform auto-builds balanced teams.</div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 6: Mods */}
+        {step === 6 && (
+          <div className="space-y-6">
+            <label className="frag-input-label">Assign Moderators</label>
+            <p className="text-sm text-muted mb-4">Mods can submit results and verify players. They cannot change settings or delete the tournament.</p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                <input type="text" className="frag-input pl-9" placeholder="Search by username..." value={modSearch} onChange={e => setModSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchMod()} />
+              </div>
+              <button onClick={searchMod} className="btn-secondary px-6">Add</button>
+            </div>
+            {mods.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {mods.map(m => (
+                  <div key={m.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg border border-border">
+                    <span className="font-bold text-primary">{m.username}</span>
+                    <button onClick={() => setMods(mods.filter(x => x.id !== m.id))} className="text-red-500 text-sm hover:underline">Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 7: Verification Window */}
+        {step === 7 && (
+          <div className="space-y-6">
+            <label className="frag-input-label">Verification Window</label>
+            <p className="text-sm text-muted mb-4">How long before the start time should registration close so you can verify players?</p>
+            <select className="frag-input text-lg" value={form.verification_window} onChange={e => set('verification_window', e.target.value)}>
+              <option value={30}>30 Minutes</option>
+              <option value={60}>1 Hour</option>
+              <option value={120}>2 Hours</option>
+              <option value={1440}>24 Hours</option>
+            </select>
+          </div>
+        )}
+
+        {/* STEP 8: Schedule */}
+        {step === 8 && (
           <div className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
               <div>
@@ -311,9 +449,9 @@ export default function CreateTournamentPage() {
                   <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                   <input type="datetime-local" className="frag-input pl-9" value={form.registration_closes} onChange={e => set('registration_closes', e.target.value)} />
                 </div>
+                <p className="text-xs text-muted mt-1">Must allow time for the verification window before start.</p>
               </div>
             </div>
-            
             <div className="border-t border-border pt-6 mt-6">
               <label className="frag-input-label">Tournament Start Date & Time</label>
               <div className="relative mb-6">
@@ -324,12 +462,11 @@ export default function CreateTournamentPage() {
           </div>
         )}
 
-        {/* STEP 3: Prize */}
-        {step === 3 && (
+        {/* STEP 9: Prize */}
+        {step === 9 && (
           <div className="space-y-6">
-            <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-secondary">
-              <div className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${form.has_prize ? 'bg-accent' : 'bg-muted'}`}
-                onClick={() => set('has_prize', !form.has_prize)}>
+            <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-secondary cursor-pointer" onClick={() => set('has_prize', !form.has_prize)}>
+              <div className={`w-12 h-6 rounded-full p-1 transition-colors ${form.has_prize ? 'bg-accent' : 'bg-muted'}`}>
                 <div className={`w-4 h-4 bg-white rounded-full transition-transform ${form.has_prize ? 'translate-x-6' : ''}`} />
               </div>
               <div>
@@ -341,44 +478,51 @@ export default function CreateTournamentPage() {
             {form.has_prize ? (
               <div className="space-y-4 animate-slide-in-right">
                 <div>
-                  <label className="frag-input-label text-gold flex items-center gap-2"><Trophy size={14}/> 1st Place Prize</label>
-                  <input type="text" className="frag-input" placeholder="e.g. $100 or 5000 CP" value={form.prize_1st} onChange={e => set('prize_1st', e.target.value)} />
+                  <label className="frag-input-label text-gold"><Trophy size={14} className="inline mr-2"/> 1st Place Prize</label>
+                  <input type="text" className="frag-input" value={form.prize_1st} onChange={e => set('prize_1st', e.target.value)} />
                 </div>
                 <div>
-                  <label className="frag-input-label text-silver flex items-center gap-2"><Trophy size={14}/> 2nd Place Prize</label>
-                  <input type="text" className="frag-input" placeholder="e.g. $50 or 2000 CP" value={form.prize_2nd} onChange={e => set('prize_2nd', e.target.value)} />
+                  <label className="frag-input-label text-silver"><Trophy size={14} className="inline mr-2"/> 2nd Place Prize</label>
+                  <input type="text" className="frag-input" value={form.prize_2nd} onChange={e => set('prize_2nd', e.target.value)} />
                 </div>
-                {form.mode === 'br' && (
-                  <div>
-                    <label className="frag-input-label text-bronze flex items-center gap-2"><Trophy size={14}/> 3rd Place Prize</label>
-                    <input type="text" className="frag-input" placeholder="e.g. 1000 CP" value={form.prize_3rd} onChange={e => set('prize_3rd', e.target.value)} />
-                  </div>
-                )}
                 <div>
-                  <label className="frag-input-label">Additional Prize Notes</label>
-                  <textarea className="frag-input h-20" placeholder="e.g. MVP bonus, distribution rules..." value={form.prize_notes} onChange={e => set('prize_notes', e.target.value)} />
+                  <label className="frag-input-label text-bronze"><Trophy size={14} className="inline mr-2"/> 3rd Place Prize</label>
+                  <input type="text" className="frag-input" value={form.prize_3rd} onChange={e => set('prize_3rd', e.target.value)} />
                 </div>
               </div>
             ) : (
               <div className="p-8 text-center border border-dashed border-border rounded-xl">
                 <Trophy size={48} className="mx-auto mb-4 opacity-20" />
-                <h3 className="font-rajdhani font-bold text-2xl text-secondary">FOR GLORY</h3>
-                <p className="text-muted">This tournament will be played for reputation and rank.</p>
+                <h3 className="font-rajdhani text-2xl text-secondary font-bold">FOR GLORY</h3>
               </div>
             )}
           </div>
         )}
 
+        {/* STEP 10: Publish */}
+        {step === 10 && (
+          <div className="space-y-6 text-center animate-slide-in-right">
+            <Shield size={48} className="mx-auto text-accent mb-4" />
+            <h2 className="text-3xl font-rajdhani font-bold text-primary">Ready to Publish</h2>
+            <p className="text-secondary max-w-md mx-auto">Double check your settings. Once published, the tournament will be live for registrations.</p>
+            <div className="p-4 bg-secondary rounded-xl text-left inline-block mt-4 border border-border">
+              <p><strong>Name:</strong> {form.name}</p>
+              <p><strong>Mode:</strong> {form.mode.toUpperCase()}</p>
+              <p><strong>Structure:</strong> {form.tournament_structure}</p>
+              <p><strong>Start:</strong> {form.start_date ? new Date(form.start_date).toLocaleString() : 'Not set'}</p>
+            </div>
+          </div>
+        )}
+
         {/* Footer Nav */}
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-border">
-          <button onClick={() => setStep(s => s - 1)} disabled={step === 0}
-            className={`btn-secondary ${step === 0 ? 'opacity-0' : ''}`}>
+          <button onClick={handleBack} disabled={step === 0} className={`btn-secondary ${step === 0 ? 'opacity-0' : ''}`}>
             <ChevronLeft size={16} /> Back
           </button>
           
           {step < STEPS.length - 1 ? (
-            <button onClick={() => setStep(s => s + 1)} className="btn-accent">
-              Next Step <ChevronRight size={16} />
+            <button onClick={handleNext} className="btn-accent">
+              Next <ChevronRight size={16} />
             </button>
           ) : (
             <button onClick={handlePublish} disabled={saving || !form.name || !form.start_date} className="btn-accent shadow-accent-glow">

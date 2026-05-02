@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { useProtectedAction } from '@/lib/hooks/useProtectedAction';
+import { RequireAuthModal } from '@/components/auth/RequireAuthModal';
 import type { Tournament, MPRegistration, BRRegistration } from '@/types';
 import Link from 'next/link';
 import { formatDate, formatDateTime, getTournamentFormatLabel, getTournamentSlotLabel, getCountdown, getAvatarUrl } from '@/lib/utils';
@@ -15,6 +17,7 @@ import toast from 'react-hot-toast';
 export default function TournamentDetailPage() {
   const { id } = useParams();
   const { profile } = useAuth();
+  const { executeProtectedAction, showAuthModal, setShowAuthModal } = useProtectedAction();
   const supabase = createClient();
   
   const [tournament, setTournament] = useState<Tournament | null>(null);
@@ -202,12 +205,7 @@ export default function TournamentDetailPage() {
             <div className="frag-card p-6 sticky top-24">
               <h3 className="font-rajdhani font-bold text-xl text-primary mb-4 border-b border-border pb-2">Registration</h3>
               
-              {!profile ? (
-                <div className="text-center">
-                  <p className="text-sm text-muted mb-4">You need to log in to register.</p>
-                  <Link href="/login" className="btn-accent w-full justify-center">Log In</Link>
-                </div>
-              ) : isRegistered ? (
+              {isRegistered ? (
                 <div className="text-center p-4 rounded-xl bg-neon-green/10 border border-neon-green/30">
                   <Check size={32} className="mx-auto mb-2 text-neon-green" />
                   <p className="font-bold text-neon-green">Registered ✓</p>
@@ -222,7 +220,7 @@ export default function TournamentDetailPage() {
                   <p className="font-bold text-gold">Tournament Full</p>
                 </div>
               ) : (
-                <button onClick={() => setShowRegModal(true)} className="btn-accent w-full justify-center py-3 text-lg">
+                <button onClick={() => executeProtectedAction(() => setShowRegModal(true))} className="btn-accent w-full justify-center py-3 text-lg">
                   {tournament.mode === 'mp' && tournament.mp_format !== '1v1' ? 'Register Team' : 
                    tournament.mode === 'br' && tournament.br_format !== 'solo' ? 'Register Squad/Duo' : 'Register Now'}
                 </button>
@@ -252,6 +250,8 @@ export default function TournamentDetailPage() {
           onSuccess={() => { setShowRegModal(false); fetchTournament(); }} 
         />
       )}
+
+      <RequireAuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
     </div>
   );
 }

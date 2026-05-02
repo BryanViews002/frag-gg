@@ -20,6 +20,13 @@ export type MatchFormat = 'single' | 'bo3' | 'bo5';
 export type PlayerRole = 'Fragger' | 'Sniper' | 'Support' | 'Rusher' | 'All-rounder';
 export type PreferredMode = 'mp' | 'br' | 'both';
 export type ReputationLevel = 'trusted' | 'good' | 'neutral' | 'flagged';
+export type TournamentStructure = 'head_to_head' | 'bracket';
+export type BracketType = 'single_elim' | 'double_elim';
+export type DrawType = 'random' | 'seeded';
+export type DrawStatus = 'pending' | 'in_progress' | 'completed';
+export type MPMatchType = 'standard' | 'pure_1v1' | 'representative' | 'battle';
+export type RegistrationType = 'self' | 'auto';
+export type MatchStatus = 'pending' | 'confirmed' | 'disputed';
 export type NotificationType =
   | 'tournament_registered'
   | 'match_starting'
@@ -74,6 +81,15 @@ export interface Tournament {
   br_format: BRFormat | null;
   match_mode: MatchMode;
   match_format: MatchFormat;
+  tournament_structure: TournamentStructure | null;
+  bracket_type: BracketType | null;
+  draw_type: DrawType | null;
+  draw_status: DrawStatus;
+  draw_completed_at: string | null;
+  mp_match_type: MPMatchType | null;
+  registration_type: RegistrationType;
+  max_teams: number | null;
+  verification_window: number;
   max_entries: number;
   entry_size: number;
   max_players: number;
@@ -95,6 +111,53 @@ export interface Tournament {
   created_at: string;
   // Joins
   creator?: User;
+}
+
+export interface Bracket {
+  id: string;
+  tournament_id: string;
+  round_number: number;
+  match_number: number;
+  slot_a_id: string | null;
+  slot_b_id: string | null;
+  score_a: number | null;
+  score_b: number | null;
+  winner_id: string | null;
+  is_bye: boolean;
+  status: MatchStatus;
+  submitted_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Seed {
+  id: string;
+  tournament_id: string;
+  registration_id: string;
+  seed_number: number;
+  pot_number: number;
+  assigned_at: string;
+}
+
+export interface TournamentMod {
+  id: string;
+  tournament_id: string;
+  user_id: string;
+  assigned_by: string;
+  assigned_at: string;
+  user?: User;
+}
+
+export interface MatchDispute {
+  id: string;
+  match_id: string;
+  tournament_id: string;
+  raised_by: string;
+  reason: string;
+  status: 'pending' | 'reviewing' | 'resolved';
+  resolved_by: string | null;
+  resolution: string | null;
+  created_at: string;
 }
 
 export interface MPRegistration {
