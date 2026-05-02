@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic';
-import { Eye, EyeOff, Mail, Lock, Swords } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Swords, Trophy, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ParticleCanvas = dynamic(() => import('@/components/canvas/ParticleCanvas'), { ssr: false });
