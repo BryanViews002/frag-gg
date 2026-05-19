@@ -71,6 +71,33 @@ export default function LeaderboardsPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-12">
+        {/* PODIUM — top 3 */}
+        {!loading && players.length >= 3 && (
+          <ScrollReveal>
+            <div className="grid grid-cols-3 gap-4 mb-10">
+              {[players[1], players[0], players[2]].map((p, idx) => {
+                const actualRank = idx === 0 ? 2 : idx === 1 ? 1 : 3;
+                const cls = actualRank === 1 ? 'podium-rank-1' : actualRank === 2 ? 'podium-rank-2' : 'podium-rank-3';
+                const rankColor = actualRank === 1 ? 'var(--gold)' : actualRank === 2 ? 'var(--silver)' : 'var(--bronze)';
+                const label = actualRank === 1 ? '🥇' : actualRank === 2 ? '🥈' : '🥉';
+                return (
+                  <Link key={p.id} href={`/players/${p.username}`}
+                    className={`${cls} p-5 text-center block transition-transform hover:-translate-y-1`}
+                  >
+                    <div className="text-2xl mb-2">{label}</div>
+                    <Image src={getAvatarUrl(p.avatar_url, p.username)} alt="" width={52} height={52}
+                      className={`rounded-full border-2 mx-auto mb-2 ${getRankRingClass(p.rank)}`}
+                      style={{ borderColor: rankColor }}
+                    />
+                    <div className="font-rajdhani font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{p.username}</div>
+                    <div className="font-orbitron text-xs mt-1" style={{ color: rankColor }}>{p.reputation_score} REP</div>
+                  </Link>
+                );
+              })}
+            </div>
+          </ScrollReveal>
+        )}
+
         <div className="frag-card overflow-hidden">
           
           {/* Table Header */}
@@ -94,7 +121,12 @@ export default function LeaderboardsPage() {
                 const bgHighlight = i === 0 ? 'rgba(255,215,0,0.05)' : i === 1 ? 'rgba(192,192,192,0.05)' : i === 2 ? 'rgba(205,127,50,0.05)' : 'transparent';
                 
                 return (
-                  <Link key={p.id} href={`/players/${p.username}`} className="block group transition-colors hover:bg-white/5" style={{ background: bgHighlight }}>
+                  <Link key={p.id} href={`/players/${p.username}`}
+                    className={`block group transition-colors hover:bg-white/5 ${
+                      i === 0 ? 'lb-row-top' : i === 1 ? 'lb-row-silver' : i === 2 ? 'lb-row-bronze' : ''
+                    }`}
+                    style={{ background: bgHighlight }}
+                  >
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center">
                       
                       {/* Rank Number */}

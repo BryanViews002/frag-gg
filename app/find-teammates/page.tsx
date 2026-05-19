@@ -102,7 +102,7 @@ export default function FindTeammatesPage() {
         
         {/* ─── FILTERS ─── */}
         <aside className="w-full md:w-64 flex-shrink-0">
-          <div className="frag-card p-5 sticky top-24">
+          <div className="premium-glass p-5 sticky top-24">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-rajdhani font-bold text-lg text-primary uppercase tracking-widest">Filters</h3>
               <Filter size={18} className="text-accent" />
@@ -151,7 +151,9 @@ export default function FindTeammatesPage() {
             <div className="space-y-4">
               {posts.map((post, i) => (
                 <ScrollReveal key={post.id} delay={i * 60}>
-                  <div className="frag-card p-5 hover:border-accent/50 transition-colors">
+                  <div className={`frag-card p-5 transition-colors ${
+                      post.game_mode === 'mp' ? 'lfg-card-mp' : 'lfg-card-br'
+                    }`}>
                   <div className="flex items-start gap-4">
                     <Link href={`/players/${post.author.username}`} className="flex-shrink-0">
                       <Image src={getAvatarUrl(post.author.avatar_url, post.author.username)} alt="" width={48} height={48} 

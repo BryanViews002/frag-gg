@@ -12,8 +12,14 @@ const ITEMS = [
   { href: '/profile/edit', icon: User, label: 'Profile' },
 ];
 
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password'];
+
 export default function MobileBottomNav() {
   const pathname = usePathname();
+
+  if (HIDDEN_ROUTES.includes(pathname)) {
+    return null;
+  }
 
   return (
     <nav
