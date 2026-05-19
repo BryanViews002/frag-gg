@@ -189,7 +189,7 @@ export default function Navbar() {
                             animation: 'scaleIn 0.15s var(--ease-out-expo)',
                           }}
                         >
-                          <DropdownItem href={`/players/${profile.username}`} icon={<User size={14} />}           label="My Profile"    onClick={() => setDropdownOpen(false)} />
+                          <DropdownItem href="/profile"                        icon={<User size={14} />}           label="My Profile"    onClick={() => setDropdownOpen(false)} />
                           <DropdownItem href="/dashboard"                     icon={<LayoutDashboard size={14} />} label="Dashboard"     onClick={() => setDropdownOpen(false)} />
                           <DropdownItem href="/profile/edit"                  icon={<Settings size={14} />}        label="Edit Profile"  onClick={() => setDropdownOpen(false)} />
                           <DropdownItem href="/notifications"                 icon={<Bell size={14} />}            label="Notifications" badge={unreadCount} onClick={() => setDropdownOpen(false)} />

@@ -32,31 +32,45 @@ export default function PlayerProfilePage() {
 
   const rawUsername = Array.isArray(username) ? username[0] : (username as string);
   const usernameStr = decodeURIComponent(rawUsername);
+  const isOwnProfile = currentUser?.username?.toLowerCase() === usernameStr?.toLowerCase();
 
   useEffect(() => {
     if (authLoading) return;
     const fetchPlayer = async () => {
       setLoading(true);
       try {
-        // 1. Try by username from URL
-        let { data } = await supabase
+        // Load the public user row first. If this is the signed-in user's own page
+        // and the public lookup fails, fall back to the already-loaded auth profile.
+        const { data: userByUsername, error: userByUsernameError } = await supabase
           .from('users')
-          .select('*, clan:clans(id, name, tag)')
+          .select('*')
           .ilike('username', usernameStr)
           .maybeSingle();
 
-        // 2. Fall back to current user's ID if not found by username
-        if (!data && currentUser?.id) {
-          const { data: ownData } = await supabase
-            .from('users')
-            .select('*, clan:clans(id, name, tag)')
-            .eq('id', currentUser.id)
-            .maybeSingle();
-          data = ownData;
+        if (userByUsernameError) {
+          console.error('Profile lookup error:', userByUsernameError);
         }
 
+        const data = (userByUsername as User | null) || (isOwnProfile ? currentUser : null);
+
         if (data) {
-          setPlayer(data as User);
+          let clan: { id: string; name: string; tag: string } | null = null;
+
+          if (data.clan_id) {
+            const { data: clanData, error: clanError } = await supabase
+              .from('clans')
+              .select('id, name, tag')
+              .eq('id', data.clan_id)
+              .maybeSingle();
+
+            if (clanError) {
+              console.error('Clan lookup error:', clanError);
+            } else if (clanData) {
+              clan = clanData;
+            }
+          }
+
+          setPlayer({ ...data, ...(clan ? { clan } : {}) } as User);
 
           // Stats — wrapped separately so they don't block profile rendering
           try {
@@ -93,7 +107,7 @@ export default function PlayerProfilePage() {
       }
     };
     fetchPlayer();
-  }, [usernameStr, authLoading, currentUser?.id]);
+  }, [usernameStr, authLoading, currentUser, isOwnProfile]);
 
   if (loading || authLoading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -102,7 +116,6 @@ export default function PlayerProfilePage() {
   );
 
   if (!player) {
-    const isOwnProfile = currentUser?.username?.toLowerCase() === usernameStr?.toLowerCase();
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
         <div className="text-center max-w-sm px-6 animate-scale-in">

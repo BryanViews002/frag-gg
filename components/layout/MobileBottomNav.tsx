@@ -9,7 +9,7 @@ const ITEMS = [
   { href: '/tournaments', icon: Trophy, label: 'Tournaments' },
   { href: '/find-teammates', icon: Users, label: 'Teammates' },
   { href: '/leaderboards', icon: BarChart3, label: 'Leaderboard' },
-  { href: '/profile/edit', icon: User, label: 'Profile' },
+  { href: '/profile', icon: User, label: 'Profile' },
 ];
 
 const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password'];

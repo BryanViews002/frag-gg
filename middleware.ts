@@ -4,7 +4,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 // Routes that require authentication
 const AUTH_REQUIRED_ROUTES = ['/dashboard', '/profile', '/tournaments/create', '/clans/create', '/notifications', '/admin'];
 // Routes that require onboarding to be complete (subset of above, NOT /onboarding itself)
-const ONBOARDING_REQUIRED_ROUTES = ['/dashboard', '/profile', '/tournaments/create', '/clans/create', '/notifications'];
+const ONBOARDING_REQUIRED_ROUTES = ['/dashboard', '/profile/edit', '/tournaments/create', '/clans/create', '/notifications'];
 // Auth-only pages — redirect logged-in users away
 const AUTH_ONLY_ROUTES = ['/login', '/register', '/forgot-password'];
 
